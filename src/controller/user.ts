@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { db } from "../db/db";
-import { messages, users } from "../drizzle/schema";
+import { chats, messages, users } from "../drizzle/schema";
 import bcrypt from "bcrypt";
-import { eq } from "drizzle-orm";
+import { and, eq, ne, or } from "drizzle-orm";
 
 const hashPassword = (password: string) => bcrypt.hash(password, 10);
 const verifyPassword = async (
@@ -23,6 +23,25 @@ export const getallUser = async (req: Request, res: Response) => {
         last_active_at: users.lastActiveAt,
       })
       .from(users);
+    res.status(200).json(allUsers);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Internal Server Error");
+  }
+};
+
+export const getParticipants = async (req: Request, res: Response) => {
+  const { senderId } = req.params;
+  try {
+    const allUsers = await db
+      .selectDistinct({
+        username: users.username,
+        user_id: users.userId,
+        status: users.status,
+        last_active_at: users.lastActiveAt,
+      })
+      .from(users)
+      .where(ne(users.userId, senderId));
     res.status(200).json(allUsers);
   } catch (error) {
     console.error(error);
@@ -98,23 +117,57 @@ export const loginUser = async (req: Request, res: Response) => {
 };
 
 export const createMessage = async (req: Request, res: Response) => {
-    try {
-      const { senderId, content, messageType, mediaUrl } = req.body;
-  
-      if (!senderId || !content) {
-        return res.status(400).json({ error: "Sender ID and content are required" });
-      }
-  
-      await db.insert(messages).values({
-        senderId,
-        content,
-        messageType: messageType || 'text', 
-        mediaUrl: mediaUrl || null, 
-      });
+  try {
+    const { senderId, recieverId, content, messageType, mediaUrl } = req.body;
 
-      res.status(201).json({ message: "Message created successfully" });
-    } catch (error) {
-      console.error("Error creating message:", error);
-      res.status(500).json({ error: "Internal Server Error" });
+    if (!senderId || !content) {
+      return res
+        .status(400)
+        .json({ error: "Sender ID and content are required" });
     }
-  };
+
+    await db.insert(chats).values({
+      senderId,
+      receiverId: recieverId,
+      content,
+      messageType: messageType || "text",
+      mediaUrl: mediaUrl || null,
+    });
+
+    res.status(201).json({ message: "Message created successfully" });
+  } catch (error) {
+    console.error("Error creating message:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
+export const getMessagesBetweenUsers = async (req: Request, res: Response) => {
+  const { senderId, receiverID } = req.params;
+
+  try {
+    const messagesList = await db
+      .select({
+        messageId: chats.chatId,
+        senderId: chats.senderId,
+        content: chats.content,
+        messageType: chats.messageType,
+        mediaUrl: chats.mediaUrl,
+        createdAt: chats.createdAt,
+        isRead: chats.isRead,
+        isTyping: chats.isTyping,
+      })
+      .from(chats)
+      .where(
+        or(
+          and(eq(chats.senderId, receiverID), eq(chats.receiverId, senderId)),
+          and(eq(chats.senderId, senderId), eq(chats.receiverId, receiverID))
+        )
+      )
+      .orderBy(chats.createdAt);
+
+    res.status(200).json(messagesList);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Internal Server Error");
+  }
+};
