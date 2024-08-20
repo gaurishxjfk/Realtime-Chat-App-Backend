@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { db } from "../db/db";
 import { chats, messages, users } from "../drizzle/schema";
 import bcrypt from "bcrypt";
-import { and, eq, ne, or } from "drizzle-orm";
+import { and, desc, eq, ne, or } from "drizzle-orm";
 
 const hashPassword = (password: string) => bcrypt.hash(password, 10);
 const verifyPassword = async (
@@ -143,7 +143,8 @@ export const createMessage = async (req: Request, res: Response) => {
 
 export const getMessagesBetweenUsers = async (req: Request, res: Response) => {
   const { senderId, receiverID } = req.params;
-
+  const limit = parseInt(req.query.limit as string) || 5; // Default to 18 messages
+  console.log(limit)
   try {
     const messagesList = await db
       .select({
@@ -163,7 +164,8 @@ export const getMessagesBetweenUsers = async (req: Request, res: Response) => {
           and(eq(chats.senderId, senderId), eq(chats.receiverId, receiverID))
         )
       )
-      .orderBy(chats.createdAt);
+      .orderBy(desc(chats.createdAt))
+      .limit(limit);
 
     res.status(200).json(messagesList);
   } catch (error) {
