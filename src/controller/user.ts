@@ -1,8 +1,8 @@
 import { Request, Response } from "express";
 import { db } from "../db/db";
-import { chats, messages, users } from "../drizzle/schema";
+import { chats, users } from "../drizzle/schema";
 import bcrypt from "bcrypt";
-import { and, desc, eq, ne, or } from "drizzle-orm";
+import { and, desc, eq, lt, ne, or } from "drizzle-orm";
 
 const hashPassword = (password: string) => bcrypt.hash(password, 10);
 const verifyPassword = async (
@@ -141,10 +141,15 @@ export const createMessage = async (req: Request, res: Response) => {
   }
 };
 
+function isValidDate(dateString: string | number | Date) {
+  const date = new Date(dateString);
+  return !isNaN(date.getTime());
+}
+
 export const getMessagesBetweenUsers = async (req: Request, res: Response) => {
   const { senderId, receiverID } = req.params;
-  const limit = parseInt(req.query.limit as string) || 5; // Default to 18 messages
-  console.log(limit)
+  const limit = (req.query.limit as unknown as Date) || null; // Default to 18 messages
+  console.log(isValidDate(limit)  ?  new Date(limit) : undefined, "I m nand");
   try {
     const messagesList = await db
       .select({
@@ -159,15 +164,19 @@ export const getMessagesBetweenUsers = async (req: Request, res: Response) => {
       })
       .from(chats)
       .where(
-        or(
-          and(eq(chats.senderId, receiverID), eq(chats.receiverId, senderId)),
-          and(eq(chats.senderId, senderId), eq(chats.receiverId, receiverID))
+        and(
+          or(
+            and(eq(chats.senderId, receiverID), eq(chats.receiverId, senderId)),
+            and(eq(chats.senderId, senderId), eq(chats.receiverId, receiverID))
+          ),
+          isValidDate(limit) ? lt(chats.createdAt, new Date(limit)) : undefined
         )
       )
       .orderBy(desc(chats.createdAt))
-      .limit(limit);
+      //.orderBy(chats.createdAt)
+      .limit(4);
 
-    res.status(200).json(messagesList);
+    res.status(200).json(messagesList.slice().reverse());
   } catch (error) {
     console.error(error);
     res.status(500).send("Internal Server Error");
