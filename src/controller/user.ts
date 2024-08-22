@@ -174,7 +174,7 @@ export const getMessagesBetweenUsers = async (req: Request, res: Response) => {
       )
       .orderBy(desc(chats.createdAt))
       //.orderBy(chats.createdAt)
-      .limit(4);
+      .limit(8);
 
     res.status(200).json(messagesList.slice().reverse());
   } catch (error) {
