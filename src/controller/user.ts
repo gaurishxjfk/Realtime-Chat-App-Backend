@@ -134,7 +134,30 @@ export const createMessage = async (req: Request, res: Response) => {
       mediaUrl: mediaUrl || null,
     });
 
-    res.status(201).json({ message: "Message created successfully" });
+    const messagesList = await db
+      .select({
+        messageId: chats.chatId,
+        senderId: chats.senderId,
+        content: chats.content,
+        messageType: chats.messageType,
+        mediaUrl: chats.mediaUrl,
+        createdAt: chats.createdAt,
+        isRead: chats.isRead,
+        isTyping: chats.isTyping,
+      })
+      .from(chats)
+      .where(
+        or(
+          and(eq(chats.senderId, recieverId), eq(chats.receiverId, senderId)),
+          and(eq(chats.senderId, senderId), eq(chats.receiverId, recieverId))
+        )
+      )
+      .orderBy(desc(chats.createdAt))
+      .limit(8);
+
+    res
+      .status(201)
+      .json({ message: "Message created successfully", body: messagesList.slice().reverse() });
   } catch (error) {
     console.error("Error creating message:", error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -149,7 +172,7 @@ function isValidDate(dateString: string | number | Date) {
 export const getMessagesBetweenUsers = async (req: Request, res: Response) => {
   const { senderId, receiverID } = req.params;
   const limit = (req.query.limit as unknown as Date) || null; // Default to 18 messages
-  console.log(isValidDate(limit)  ?  new Date(limit) : undefined, "I m nand");
+  console.log(isValidDate(limit) ? new Date(limit) : undefined, "I m nand");
   try {
     const messagesList = await db
       .select({
