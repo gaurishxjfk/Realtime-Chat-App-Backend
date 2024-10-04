@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { db } from "../db/db";
-import { chats, users } from "../drizzle/schema";
+import { chats, user_sessions, users } from "../drizzle/schema";
 import bcrypt from "bcrypt";
 import { and, desc, eq, lt, ne, or } from "drizzle-orm";
 
@@ -67,6 +67,24 @@ export const createUser = async (req: Request, res: Response) => {
       passwordHash,
     });
     res.status(201).json({ message: "User created successfully" });
+  } catch (error) {
+    res.status(500).json({ error: error });
+  }
+};
+
+export const createSession = async (req: Request, res: Response) => {
+  try {
+    const { userId, roomId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: "user_id is required" });
+    }
+
+    await db.insert(user_sessions).values({
+      userId,
+      roomId
+    });
+    res.status(201).json({ message: "User session added successfully" });
   } catch (error) {
     res.status(500).json({ error: error });
   }
@@ -157,7 +175,10 @@ export const createMessage = async (req: Request, res: Response) => {
 
     res
       .status(201)
-      .json({ message: "Message created successfully", body: messagesList.slice().reverse() });
+      .json({
+        message: "Message created successfully",
+        body: messagesList.slice().reverse(),
+      });
   } catch (error) {
     console.error("Error creating message:", error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -200,6 +221,26 @@ export const getMessagesBetweenUsers = async (req: Request, res: Response) => {
       .limit(8);
 
     res.status(200).json(messagesList.slice().reverse());
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Internal Server Error");
+  }
+};
+
+export const getUsersRoomId = async (req: Request, res: Response) => {
+  const { receiverID } = req.params;
+
+  try {
+    const roomIDList = await db
+      .select({
+        roomId: user_sessions.roomId
+      })
+      .from(user_sessions)
+      .where(eq(user_sessions.userId, receiverID)
+      )
+      .orderBy(desc(user_sessions.createdAt))
+
+    res.status(200).json(roomIDList.map(i => i.roomId));
   } catch (error) {
     console.error(error);
     res.status(500).send("Internal Server Error");
