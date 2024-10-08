@@ -3,10 +3,12 @@ import dotenv from "dotenv";
 import router from "./routes";
 import cors from "cors";
 
+import { app, server } from "./socket/socket";
+
 dotenv.config();
 
-const app = express();
-app.use(express.json()); 
+
+app.use(express.json());
 
 app.use(
   cors({
@@ -24,6 +26,6 @@ app.get("/", (req: Request, res: Response) => {
 
 app.use("/users", router);
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server is listening at http://localhost:${PORT}`);
 });

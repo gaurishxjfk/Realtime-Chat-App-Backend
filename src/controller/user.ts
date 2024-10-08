@@ -3,6 +3,7 @@ import { db } from "../db/db";
 import { chats, users } from "../drizzle/schema";
 import bcrypt from "bcrypt";
 import { and, desc, eq, lt, ne, or } from "drizzle-orm";
+import { getReceiverSocketId, io } from "../socket/socket";
 
 const hashPassword = (password: string) => bcrypt.hash(password, 10);
 const verifyPassword = async (
@@ -126,14 +127,13 @@ export const createMessage = async (req: Request, res: Response) => {
         .json({ error: "Sender ID and content are required" });
     }
 
-    await db.insert(chats).values({
+    const newMsg = await db.insert(chats).values({
       senderId,
       receiverId: recieverId,
       content,
       messageType: messageType || "text",
       mediaUrl: mediaUrl || null,
-    });
-
+    }).returning();
     const messagesList = await db
       .select({
         messageId: chats.chatId,
@@ -154,6 +154,13 @@ export const createMessage = async (req: Request, res: Response) => {
       )
       .orderBy(desc(chats.createdAt))
       .limit(8);
+
+       // socket io functionality
+    const receiverSocketId = getReceiverSocketId(recieverId)
+
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("newMessage", ...newMsg)
+    }
 
     res
       .status(201)
@@ -192,11 +199,10 @@ export const getMessagesBetweenUsers = async (req: Request, res: Response) => {
             and(eq(chats.senderId, receiverID), eq(chats.receiverId, senderId)),
             and(eq(chats.senderId, senderId), eq(chats.receiverId, receiverID))
           ),
-          isValidDate(limit) ? lt(chats.createdAt, new Date(limit)) : undefined
+         // isValidDate(limit) ? lt(chats.createdAt, new Date(limit)) : undefined
         )
       )
       .orderBy(desc(chats.createdAt))
-      //.orderBy(chats.createdAt)
       .limit(8);
 
     res.status(200).json(messagesList.slice().reverse());
