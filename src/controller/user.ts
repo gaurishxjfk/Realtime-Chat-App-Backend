@@ -1,9 +1,11 @@
 import { Request, Response } from "express";
+import "dotenv/config";
 import { db } from "../db/db";
 import { chats, users } from "../drizzle/schema";
 import bcrypt from "bcrypt";
 import { and, desc, eq, lt, ne, or } from "drizzle-orm";
 import { getReceiverSocketId, io } from "../socket/socket";
+import { uploadFile } from "./supabase";
 
 const hashPassword = (password: string) => bcrypt.hash(password, 10);
 const verifyPassword = async (
@@ -119,21 +121,28 @@ export const loginUser = async (req: Request, res: Response) => {
 
 export const createMessage = async (req: Request, res: Response) => {
   try {
-    const { senderId, recieverId, content, messageType, mediaUrl } = req.body;
+    const { senderId, recieverId, content, messageType } = req.body;
+    console.log(senderId, recieverId, content, messageType);
 
     if (!senderId || !content) {
       return res
         .status(400)
         .json({ error: "Sender ID and content are required" });
     }
+    const publicUrl: string | null =
+      messageType === "text" ? null : await uploadFile(req.file);
 
-    const newMsg = await db.insert(chats).values({
-      senderId,
-      receiverId: recieverId,
-      content,
-      messageType: messageType || "text",
-      mediaUrl: mediaUrl || null,
-    }).returning();
+    const newMsg = await db
+      .insert(chats)
+      .values({
+        senderId,
+        receiverId: recieverId,
+        content,
+        messageType: messageType || "text",
+        mediaUrl: publicUrl ?? null,
+      })
+      .returning();
+
     const messagesList = await db
       .select({
         messageId: chats.chatId,
@@ -155,16 +164,17 @@ export const createMessage = async (req: Request, res: Response) => {
       .orderBy(desc(chats.createdAt))
       .limit(8);
 
-       // socket io functionality
-    const receiverSocketId = getReceiverSocketId(recieverId)
+    // socket io functionality
+    const receiverSocketId = getReceiverSocketId(recieverId);
 
     if (receiverSocketId) {
-      io.to(receiverSocketId).emit("newMessage", ...newMsg)
+      io.to(receiverSocketId).emit("newMessage", ...newMsg);
     }
 
-    res
-      .status(201)
-      .json({ message: "Message created successfully", body: messagesList.slice().reverse() });
+    res.status(201).json({
+      message: "Message created successfully",
+      body: messagesList.slice().reverse(),
+    });
   } catch (error) {
     console.error("Error creating message:", error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -178,8 +188,14 @@ function isValidDate(dateString: string | number | Date) {
 
 export const getMessagesBetweenUsers = async (req: Request, res: Response) => {
   const { senderId, receiverID } = req.params;
-  const limit = (req.query.limit as unknown as Date) || null; // Default to 18 messages
-  console.log(isValidDate(limit) ? new Date(limit) : undefined, "I m nand");
+  const limit = req.query.limit
+    ? parseInt(req.query.limit as string, 10) || 8
+    : 8;
+  // Parse the cursor for pagination (the timestamp of the oldest loaded message)
+  const cursor =
+    req.query.cursor !== "null" ? new Date(req.query.cursor as string) : false;
+
+  console.log(cursor, "I m nand");
   try {
     const messagesList = await db
       .select({
@@ -199,13 +215,20 @@ export const getMessagesBetweenUsers = async (req: Request, res: Response) => {
             and(eq(chats.senderId, receiverID), eq(chats.receiverId, senderId)),
             and(eq(chats.senderId, senderId), eq(chats.receiverId, receiverID))
           ),
-         // isValidDate(limit) ? lt(chats.createdAt, new Date(limit)) : undefined
+          cursor ? lt(chats.createdAt, cursor) : undefined
         )
       )
       .orderBy(desc(chats.createdAt))
-      .limit(8);
+      .limit(limit);
 
-    res.status(200).json(messagesList.slice().reverse());
+    res.status(200).json({
+      messages: messagesList.slice().reverse(), // Reverse messages to send in chronological order
+      hasMore: messagesList.length === limit, // If we got less than limit, there are no more messages
+      nextCursor:
+        messagesList.length > 0
+          ? messagesList[messagesList.length - 1].createdAt
+          : null, // Send the next cursor
+    });
   } catch (error) {
     console.error(error);
     res.status(500).send("Internal Server Error");
