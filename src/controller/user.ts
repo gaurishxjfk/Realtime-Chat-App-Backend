@@ -45,7 +45,37 @@ export const getParticipants = async (req: Request, res: Response) => {
       })
       .from(users)
       .where(ne(users.userId, senderId));
-    res.status(200).json(allUsers);
+
+    const finalAllUser = await Promise.all(
+      allUsers.map(async (user) => {
+        const lastMessage = await db
+          .select({
+            messageId: chats.chatId,
+            senderId: chats.senderId,
+            content: chats.content,
+            messageType: chats.messageType,
+            mediaUrl: chats.mediaUrl,
+            createdAt: chats.createdAt,
+            isRead: chats.isRead,
+            isTyping: chats.isTyping,
+          })
+          .from(chats)
+          .where(
+            and(
+              or(
+                and(eq(chats.senderId, user.user_id), eq(chats.receiverId, senderId)),
+                and(eq(chats.senderId, senderId), eq(chats.receiverId, user.user_id))
+              )
+            )
+          )
+          .orderBy(desc(chats.createdAt))
+          .limit(1);
+
+        // Return the user object combined with the last message (if it exists)
+        return { ...user, ...(lastMessage[0] || {}) };
+      })
+    );
+    res.status(200).json(finalAllUser);
   } catch (error) {
     console.error(error);
     res.status(500).send("Internal Server Error");
