@@ -9,6 +9,7 @@ export const users = pgTable('users', {
     status: text('status').notNull().default('offline'),
     lastActiveAt: timestamp('last_active_at').notNull().defaultNow(),
     createdAt: timestamp('created_at').notNull().defaultNow(),
+    profileImage: varchar('profile_image', { length: 255 })
   });
 
   export const messages = pgTable('messages', {

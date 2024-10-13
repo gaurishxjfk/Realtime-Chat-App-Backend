@@ -42,6 +42,7 @@ export const getParticipants = async (req: Request, res: Response) => {
         user_id: users.userId,
         status: users.status,
         last_active_at: users.lastActiveAt,
+        profile_image: users.profileImage
       })
       .from(users)
       .where(ne(users.userId, senderId));
@@ -84,13 +85,17 @@ export const getParticipants = async (req: Request, res: Response) => {
 
 export const createUser = async (req: Request, res: Response) => {
   try {
-    const { username, email, password } = req.body;
+    const { username, email, password, profile_image } = req.body;
 
     if (!username || !email || !password) {
       return res
         .status(400)
         .json({ error: "Username, email, and password are required" });
     }
+
+    await db.update(users)
+      .set({ profileImage: profile_image, username: username })
+      .where(eq(users.email, email));
 
     // Check if the user already exists
     const existingUser = await db
