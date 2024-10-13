@@ -92,6 +92,37 @@ export const createUser = async (req: Request, res: Response) => {
         .json({ error: "Username, email, and password are required" });
     }
 
+    // Check if the user already exists
+    const existingUser = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1)
+      .execute();
+
+    if (existingUser.length > 0) {
+      const foundUser = existingUser[0];
+
+      // Verify the password for existing user
+      const isPasswordValid = await verifyPassword(
+        password,
+        foundUser.passwordHash
+      );
+
+      if (!isPasswordValid) {
+        return res.status(401).json({ error: "Invalid password" });
+      }
+
+      // Successful login for existing user
+      return res.status(200).json({
+        message: "User logged in successfully",
+        id: foundUser.userId,
+        username: foundUser.username,
+        email: foundUser.email,
+      });
+    }
+
+    // If user doesn't exist, create a new user
     const passwordHash = await hashPassword(password);
 
     await db.insert(users).values({
@@ -99,11 +130,14 @@ export const createUser = async (req: Request, res: Response) => {
       email,
       passwordHash,
     });
-    res.status(201).json({ message: "User created successfully" });
+
+    return res.status(201).json({ message: "User created successfully" });
   } catch (error) {
-    res.status(500).json({ error: error });
+    console.error("Error during user creation or login:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
 
 export const loginUser = async (req: Request, res: Response) => {
   try {
