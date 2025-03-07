@@ -10,7 +10,7 @@ import {
 import multer from "multer";
 const router = express.Router();
 
-// Configure multer
+// Configure multer //
 const upload = multer({ dest: 'uploads/' });
 upload.single('image'),
 
